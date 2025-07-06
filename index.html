@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ChatPro with Rooms</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center h-screen font-sans">
+
+    <div id="join-container" class="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-sm">
+        <h1 class="text-2xl font-bold mb-6 text-center text-blue-400">Join a Chat Room</h1>
+        <form id="join-form">
+            <div class="mb-4">
+                <label for="username" class="block mb-2 text-sm font-medium">Nama Anda</label>
+                <input id="username" type="text" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500" required>
+            </div>
+            <div class="mb-6">
+                <label for="room" class="block mb-2 text-sm font-medium">Pilih Ruangan</label>
+                <select id="room" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2.5 focus:ring-blue-500 focus:border-blue-500">
+                    <option>General</option>
+                    <option>Gaming</option>
+                    <option>Music</option>
+                </select>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition">Join</button>
+        </form>
+    </div>
+
+    <div id="chat-container" class="hidden flex flex-col h-screen w-full bg-gray-800">
+        <header class="bg-gray-900 p-4 flex items-center justify-center relative shadow-md">
+            <button id="leave-btn" class="absolute left-4 p-2 rounded-full hover:bg-gray-700 transition" title="Keluar Ruangan">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+            </button>
+            <h1 id="room-title" class="text-xl font-bold text-blue-400"></h1>
+        </header>
+        
+        <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4">
+            </div>
+
+        <div id="typing-indicator" class="h-6 px-4 text-sm text-gray-400 italic"></div>
+
+        <form id="chat-form" class="p-4 flex bg-gray-900 border-t border-gray-700">
+            <input id="chat-input" autocomplete="off" class="bg-gray-700 border border-gray-600 rounded-full py-2 px-4 w-full focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ketik pesan..."/>
+            <button class="bg-blue-600 text-white rounded-full px-5 py-2 ml-4 hover:bg-blue-700 transition">Send</button>
+        </form>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        // Elemen UI
+        const joinContainer = document.getElementById('join-container');
+        const chatContainer = document.getElementById('chat-container');
+        const joinForm = document.getElementById('join-form');
+        const chatForm = document.getElementById('chat-form');
+        const messagesContainer = document.getElementById('messages-container');
+        const roomTitle = document.getElementById('room-title');
+        const typingIndicator = document.getElementById('typing-indicator');
+        const usernameInput = document.getElementById('username');
+        const roomInput = document.getElementById('room');
+        const chatInput = document.getElementById('chat-input');
+        const leaveBtn = document.getElementById('leave-btn'); // Ambil elemen tombol keluar
+        
+        let currentUser = '';
+        let typingTimer;
+
+        // ... (Fungsi addMessage dan logika form submit tetap sama) ...
+        
+        // 1. Logika Bergabung ke Ruangan
+        joinForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            currentUser = usernameInput.value;
+            const room = roomInput.value;
+
+            if (currentUser && room) {
+                socket.emit('join room', { room, username: currentUser });
+                joinContainer.classList.add('hidden');
+                chatContainer.classList.remove('hidden');
+                roomTitle.textContent = `Ruangan: ${room}`;
+                document.title = `Chat - ${currentUser} (${room})`;
+            }
+        });
+        
+        // TAMBAHKAN EVENT LISTENER INI
+        // 2. Logika Keluar dari Ruangan
+        leaveBtn.addEventListener('click', () => {
+            socket.emit('leave room');
+            // Reset UI ke tampilan awal
+            chatContainer.classList.add('hidden');
+            joinContainer.classList.remove('hidden');
+            messagesContainer.innerHTML = ''; // Kosongkan pesan lama
+            document.title = 'ChatPro with Rooms';
+        });
+
+        // ... (Sisa kode JavaScript Anda tetap sama)
+        const addMessage = (html) => {
+            messagesContainer.innerHTML += html;
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        };
+        chatForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (chatInput.value && currentUser) {
+                socket.emit('chat message', { message: chatInput.value });
+                socket.emit('stop typing');
+                chatInput.value = '';
+            }
+        });
+        socket.on('chat message', function(data) {
+            typingIndicator.textContent = '';
+            const isMe = data.user === currentUser;
+            const bubbleAlignment = isMe ? 'justify-end' : 'justify-start';
+            const bubbleColor = isMe ? 'bg-blue-600' : 'bg-gray-700';
+            const bubbleAuthor = isMe ? '' : `<div class="text-xs text-blue-300 font-semibold mb-1">${data.user}</div>`;
+            const messageHtml = `
+                <div class="flex ${bubbleAlignment}">
+                    <div class="max-w-xs md:max-w-md">
+                        ${bubbleAuthor}
+                        <div class="${bubbleColor} rounded-xl p-3 shadow">
+                            <p>${data.message}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            addMessage(messageHtml);
+        });
+        const addSystemNotification = (message) => {
+            const notificationHtml = `
+                <div class="text-center text-sm text-gray-500 my-2 italic">
+                    ${message}
+                </div>
+            `;
+            addMessage(notificationHtml);
+        };
+        socket.on('user notification', addSystemNotification);
+        chatInput.addEventListener('input', () => {
+            socket.emit('typing');
+            clearTimeout(typingTimer);
+            typingTimer = setTimeout(() => {
+                socket.emit('stop typing');
+            }, 2000);
+        });
+        socket.on('typing', (username) => {
+            typingIndicator.textContent = `${username} sedang mengetik...`;
+        });
+        socket.on('stop typing', () => {
+            typingIndicator.textContent = '';
+        });
+    </script>
+</body>
+</html>
